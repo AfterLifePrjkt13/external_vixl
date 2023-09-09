@@ -2429,6 +2429,52 @@ void Assembler::setpn(const Register& rd,
   Emit(0x19c02400 | Rd(rd) | Rn(rn) | Rs(rs));
 }
 
+void Assembler::abs(const Register& rd, const Register& rn) {
+  VIXL_ASSERT(CPUHas(CPUFeatures::kCSSC));
+  VIXL_ASSERT(rd.IsSameSizeAndType(rn));
+
+  Emit(0x5ac02000 | SF(rd) | Rd(rd) | Rn(rn));
+}
+
+void Assembler::cnt(const Register& rd, const Register& rn) {
+  VIXL_ASSERT(CPUHas(CPUFeatures::kCSSC));
+  VIXL_ASSERT(rd.IsSameSizeAndType(rn));
+
+  Emit(0x5ac01c00 | SF(rd) | Rd(rd) | Rn(rn));
+}
+
+void Assembler::ctz(const Register& rd, const Register& rn) {
+  VIXL_ASSERT(CPUHas(CPUFeatures::kCSSC));
+  VIXL_ASSERT(rd.IsSameSizeAndType(rn));
+
+  Emit(0x5ac01800 | SF(rd) | Rd(rd) | Rn(rn));
+}
+
+#define MINMAX(V)                        \
+  V(smax, 0x11c00000, 0x1ac06000, true)  \
+  V(smin, 0x11c80000, 0x1ac06800, true)  \
+  V(umax, 0x11c40000, 0x1ac06400, false) \
+  V(umin, 0x11cc0000, 0x1ac06c00, false)
+
+#define VIXL_DEFINE_ASM_FUNC(FN, IMMOP, REGOP, SIGNED)                     \
+  void Assembler::FN(const Register& rd,                                   \
+                     const Register& rn,                                   \
+                     const Operand& op) {                                  \
+    VIXL_ASSERT(rd.IsSameSizeAndType(rn));                                 \
+    Instr i = SF(rd) | Rd(rd) | Rn(rn);                                    \
+    if (op.IsImmediate()) {                                                \
+      int64_t imm = op.GetImmediate();                                     \
+      i |= SIGNED ? ImmField<17, 10>(imm) : ImmUnsignedField<17, 10>(imm); \
+      Emit(IMMOP | i);                                                     \
+    } else {                                                               \
+      VIXL_ASSERT(op.IsPlainRegister());                                   \
+      VIXL_ASSERT(op.GetRegister().IsSameSizeAndType(rd));                 \
+      Emit(REGOP | i | Rm(op.GetRegister()));                              \
+    }                                                                      \
+  }
+MINMAX(VIXL_DEFINE_ASM_FUNC)
+#undef VIXL_DEFINE_ASM_FUNC
+
 // NEON structure loads and stores.
 Instr Assembler::LoadStoreStructAddrModeField(const MemOperand& addr) {
   Instr addr_field = RnSP(addr.GetBaseRegister());
@@ -3272,7 +3318,8 @@ void Assembler::fmov(const Register& rd, const VRegister& vn) {
 
 
 void Assembler::fmov(const VRegister& vd, const Register& rn) {
-  VIXL_ASSERT(CPUHas(CPUFeatures::kFP));
+  VIXL_ASSERT(CPUHas(CPUFeatures::kFP) ||
+              (vd.Is1D() && CPUHas(CPUFeatures::kNEON)));
   VIXL_ASSERT(vd.Is1H() || vd.Is1S() || vd.Is1D());
   VIXL_ASSERT((vd.GetSizeInBits() == rn.GetSizeInBits()) || vd.Is1H());
   FPIntegerConvertOp op;
@@ -5801,9 +5848,9 @@ Instr Assembler::ImmFP16(Float16 imm) {
 
 
 uint32_t Assembler::FP32ToImm8(float imm) {
-  VIXL_ASSERT(IsImmFP32(imm));
   // bits: aBbb.bbbc.defg.h000.0000.0000.0000.0000
   uint32_t bits = FloatToRawbits(imm);
+  VIXL_ASSERT(IsImmFP32(bits));
   // bit7: a000.0000
   uint32_t bit7 = ((bits >> 31) & 0x1) << 7;
   // bit6: 0b00.0000
@@ -5819,10 +5866,10 @@ Instr Assembler::ImmFP32(float imm) { return FP32ToImm8(imm) << ImmFP_offset; }
 
 
 uint32_t Assembler::FP64ToImm8(double imm) {
-  VIXL_ASSERT(IsImmFP64(imm));
   // bits: aBbb.bbbb.bbcd.efgh.0000.0000.0000.0000
   //       0000.0000.0000.0000.0000.0000.0000.0000
   uint64_t bits = DoubleToRawbits(imm);
+  VIXL_ASSERT(IsImmFP64(bits));
   // bit7: a000.0000
   uint64_t bit7 = ((bits >> 63) & 0x1) << 7;
   // bit6: 0b00.0000
@@ -6376,10 +6423,9 @@ bool Assembler::IsImmFP16(Float16 imm) {
 }
 
 
-bool Assembler::IsImmFP32(float imm) {
+bool Assembler::IsImmFP32(uint32_t bits) {
   // Valid values will have the form:
   // aBbb.bbbc.defg.h000.0000.0000.0000.0000
-  uint32_t bits = FloatToRawbits(imm);
   // bits[19..0] are cleared.
   if ((bits & 0x7ffff) != 0) {
     return false;
@@ -6400,11 +6446,10 @@ bool Assembler::IsImmFP32(float imm) {
 }
 
 
-bool Assembler::IsImmFP64(double imm) {
+bool Assembler::IsImmFP64(uint64_t bits) {
   // Valid values will have the form:
   // aBbb.bbbb.bbcd.efgh.0000.0000.0000.0000
   // 0000.0000.0000.0000.0000.0000.0000.0000
-  uint64_t bits = DoubleToRawbits(imm);
   // bits[47..0] are cleared.
   if ((bits & 0x0000ffffffffffff) != 0) {
     return false;

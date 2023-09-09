@@ -1916,6 +1916,34 @@ TEST(pacga_xpaci_xpacd) {
   }
 }
 
+TEST(pac_sp_modifier) {
+  SETUP_WITH_FEATURES(CPUFeatures::kPAuth);
+
+  START();
+
+  __ Mov(x0, 0x0000000012345678);
+  __ Mov(x1, x0);
+  __ Mov(x10, sp);
+
+  // Generate PACs using sp and register containing a copy of sp.
+  __ Pacia(x0, x10);
+  __ Pacia(x1, sp);
+
+  // Authenticate the pointers, exchanging (equal) modifiers.
+  __ Mov(x2, x0);
+  __ Mov(x3, x1);
+  __ Autia(x2, sp);
+  __ Autia(x3, x10);
+
+  END();
+
+  if (CAN_RUN()) {
+    RUN();
+
+    ASSERT_EQUAL_64(x0, x1);
+    ASSERT_EQUAL_64(x2, x3);
+  }
+}
 
 TEST(label) {
   SETUP();
@@ -4559,6 +4587,11 @@ TEST(prfm_regoffset) {
   for (int op = 0; op < (1 << ImmPrefetchOperation_width); op++) {
     // Unallocated prefetch operations are ignored, so test all of them.
     // We have to use the Assembler directly for this.
+
+    // Prefetch operations of the form 0b11xxx are allocated to another
+    // instruction.
+    if (op >= 0b11000) continue;
+
     ExactAssemblyScope guard(&masm, inputs.GetCount() * kInstructionSize);
     CPURegList loop = inputs;
     while (!loop.IsEmpty()) {
@@ -7131,6 +7164,9 @@ TEST(system_msr) {
   __ Cinc(x7, x7, hs);  // C
   __ Cinc(x7, x7, vc);  // !V
 
+  Register old_fpcr = x15;
+  __ Mrs(old_fpcr, FPCR);
+
   // All core FPCR fields must be writable.
   __ Mov(x8, fpcr_core);
   __ Msr(FPCR, x8);
@@ -7164,6 +7200,8 @@ TEST(system_msr) {
   __ Msr(FPCR, x10);
   __ Mrs(x10, FPCR);
 #endif
+
+  __ Msr(FPCR, old_fpcr);
 
   END();
 
@@ -14339,6 +14377,276 @@ TEST(mops_cpyfn) {
   }
 }
 
+TEST(cssc_abs) {
+  SETUP_WITH_FEATURES(CPUFeatures::kCSSC);
+
+  START();
+  __ Mov(x0, -1);
+  __ Mov(x1, 1);
+  __ Mov(x2, 0);
+  __ Mov(x3, 0x7fff'ffff);
+  __ Mov(x4, 0x8000'0000);
+  __ Mov(x5, 0x8000'0001);
+  __ Mov(x6, 0x7fff'ffff'ffff'ffff);
+  __ Mov(x7, 0x8000'0000'0000'0000);
+  __ Mov(x8, 0x8000'0000'0000'0001);
+
+  __ Abs(w10, w0);
+  __ Abs(x11, x0);
+  __ Abs(w12, w1);
+  __ Abs(x13, x1);
+  __ Abs(w14, w2);
+  __ Abs(x15, x2);
+
+  __ Abs(w19, w3);
+  __ Abs(x20, x3);
+  __ Abs(w21, w4);
+  __ Abs(x22, x4);
+  __ Abs(w23, w5);
+  __ Abs(x24, x5);
+  __ Abs(w25, w6);
+  __ Abs(x26, x6);
+  __ Abs(w27, w7);
+  __ Abs(x28, x7);
+  __ Abs(w29, w8);
+  __ Abs(x30, x8);
+  END();
+
+  if (CAN_RUN()) {
+    RUN();
+
+    ASSERT_EQUAL_64(1, x10);
+    ASSERT_EQUAL_64(1, x11);
+    ASSERT_EQUAL_64(1, x12);
+    ASSERT_EQUAL_64(1, x13);
+    ASSERT_EQUAL_64(0, x14);
+    ASSERT_EQUAL_64(0, x15);
+    ASSERT_EQUAL_64(0x7fff'ffff, x19);
+    ASSERT_EQUAL_64(0x7fff'ffff, x20);
+    ASSERT_EQUAL_64(0x8000'0000, x21);
+    ASSERT_EQUAL_64(0x8000'0000, x22);
+    ASSERT_EQUAL_64(0x7fff'ffff, x23);
+    ASSERT_EQUAL_64(0x8000'0001, x24);
+    ASSERT_EQUAL_64(1, x25);
+    ASSERT_EQUAL_64(0x7fff'ffff'ffff'ffff, x26);
+    ASSERT_EQUAL_64(0, x27);
+    ASSERT_EQUAL_64(0x8000'0000'0000'0000, x28);
+    ASSERT_EQUAL_64(1, x29);
+    ASSERT_EQUAL_64(0x7fff'ffff'ffff'ffff, x30);
+  }
+}
+
+TEST(cssc_cnt) {
+  SETUP_WITH_FEATURES(CPUFeatures::kCSSC);
+
+  START();
+  __ Mov(x0, -1);
+  __ Mov(x1, 1);
+  __ Mov(x2, 0);
+  __ Mov(x3, 0x7fff'ffff);
+  __ Mov(x4, 0x8000'0000);
+  __ Mov(x5, 0x8000'0001);
+  __ Mov(x6, 0x7fff'ffff'ffff'ffff);
+  __ Mov(x7, 0x4242'4242'aaaa'aaaa);
+
+  __ Cnt(w10, w0);
+  __ Cnt(x11, x0);
+  __ Cnt(w12, w1);
+  __ Cnt(x13, x1);
+  __ Cnt(w14, w2);
+  __ Cnt(x15, x2);
+  __ Cnt(w19, w3);
+  __ Cnt(x20, x3);
+  __ Cnt(w21, w4);
+  __ Cnt(x22, x4);
+  __ Cnt(w23, w5);
+  __ Cnt(x24, x5);
+  __ Cnt(w25, w6);
+  __ Cnt(x26, x6);
+  __ Cnt(w27, w7);
+  __ Cnt(x28, x7);
+  END();
+
+  if (CAN_RUN()) {
+    RUN();
+
+    ASSERT_EQUAL_64(32, x10);
+    ASSERT_EQUAL_64(64, x11);
+    ASSERT_EQUAL_64(1, x12);
+    ASSERT_EQUAL_64(1, x13);
+    ASSERT_EQUAL_64(0, x14);
+    ASSERT_EQUAL_64(0, x15);
+    ASSERT_EQUAL_64(31, x19);
+    ASSERT_EQUAL_64(31, x20);
+    ASSERT_EQUAL_64(1, x21);
+    ASSERT_EQUAL_64(1, x22);
+    ASSERT_EQUAL_64(2, x23);
+    ASSERT_EQUAL_64(2, x24);
+    ASSERT_EQUAL_64(32, x25);
+    ASSERT_EQUAL_64(63, x26);
+    ASSERT_EQUAL_64(16, x27);
+    ASSERT_EQUAL_64(24, x28);
+  }
+}
+
+TEST(cssc_ctz) {
+  SETUP_WITH_FEATURES(CPUFeatures::kCSSC);
+
+  START();
+  __ Mov(x0, -1);
+  __ Mov(x1, 1);
+  __ Mov(x2, 2);
+  __ Mov(x3, 0x7fff'ff00);
+  __ Mov(x4, 0x8000'4000);
+  __ Mov(x5, 0x4000'0001);
+  __ Mov(x6, 0x0000'0001'0000'0000);
+  __ Mov(x7, 0x4200'0000'0000'0000);
+
+  __ Ctz(w10, w0);
+  __ Ctz(x11, x0);
+  __ Ctz(w12, w1);
+  __ Ctz(x13, x1);
+  __ Ctz(w14, w2);
+  __ Ctz(x15, x2);
+  __ Ctz(w19, w3);
+  __ Ctz(x20, x3);
+  __ Ctz(w21, w4);
+  __ Ctz(x22, x4);
+  __ Ctz(w23, w5);
+  __ Ctz(x24, x5);
+  __ Ctz(w25, w6);
+  __ Ctz(x26, x6);
+  __ Ctz(w27, w7);
+  __ Ctz(x28, x7);
+  END();
+
+  if (CAN_RUN()) {
+    RUN();
+
+    ASSERT_EQUAL_64(0, x10);
+    ASSERT_EQUAL_64(0, x11);
+    ASSERT_EQUAL_64(0, x12);
+    ASSERT_EQUAL_64(0, x13);
+    ASSERT_EQUAL_64(1, x14);
+    ASSERT_EQUAL_64(1, x15);
+    ASSERT_EQUAL_64(8, x19);
+    ASSERT_EQUAL_64(8, x20);
+    ASSERT_EQUAL_64(14, x21);
+    ASSERT_EQUAL_64(14, x22);
+    ASSERT_EQUAL_64(0, x23);
+    ASSERT_EQUAL_64(0, x24);
+    ASSERT_EQUAL_64(32, x25);
+    ASSERT_EQUAL_64(32, x26);
+    ASSERT_EQUAL_64(32, x27);
+    ASSERT_EQUAL_64(57, x28);
+  }
+}
+
+using MinMaxOp = void (MacroAssembler::*)(const Register&,
+                                          const Register&,
+                                          const Operand&);
+
+static void MinMaxHelper(MinMaxOp op,
+                         bool is_signed,
+                         uint64_t a,
+                         uint64_t b,
+                         uint32_t wexp,
+                         uint64_t xexp) {
+  SETUP_WITH_FEATURES(CPUFeatures::kCSSC);
+
+  START();
+  __ Mov(x0, a);
+  __ Mov(x1, b);
+  if ((is_signed && IsInt8(b)) || (!is_signed && IsUint8(b))) {
+    (masm.*op)(w10, w0, b);
+    (masm.*op)(x11, x0, b);
+  } else {
+    (masm.*op)(w10, w0, w1);
+    (masm.*op)(x11, x0, x1);
+  }
+  END();
+
+  if (CAN_RUN()) {
+    RUN();
+    ASSERT_EQUAL_64(wexp, x10);
+    ASSERT_EQUAL_64(xexp, x11);
+  }
+}
+
+TEST(cssc_umin) {
+  MinMaxOp op = &MacroAssembler::Umin;
+  uint32_t s32min = 0x8000'0000;
+  uint32_t s32max = 0x7fff'ffff;
+  uint64_t s64min = 0x8000'0000'0000'0000;
+  uint64_t s64max = 0x7fff'ffff'ffff'ffff;
+
+  MinMaxHelper(op, false, 0, 0, 0, 0);
+  MinMaxHelper(op, false, 128, 255, 128, 128);
+  MinMaxHelper(op, false, 0, 0xffff'ffff'ffff'ffff, 0, 0);
+  MinMaxHelper(op, false, s32max, s32min, s32max, s32max);
+  MinMaxHelper(op, false, s32min, s32max, s32max, s32max);
+  MinMaxHelper(op, false, s64max, s32min, s32min, s32min);
+  MinMaxHelper(op, false, s64min, s64max, 0, s64max);
+}
+
+TEST(cssc_umax) {
+  MinMaxOp op = &MacroAssembler::Umax;
+  uint32_t s32min = 0x8000'0000;
+  uint32_t s32max = 0x7fff'ffff;
+  uint64_t s64min = 0x8000'0000'0000'0000;
+  uint64_t s64max = 0x7fff'ffff'ffff'ffff;
+
+  MinMaxHelper(op, false, 0, 0, 0, 0);
+  MinMaxHelper(op, false, 128, 255, 255, 255);
+  MinMaxHelper(op,
+               false,
+               0,
+               0xffff'ffff'ffff'ffff,
+               0xffff'ffff,
+               0xffff'ffff'ffff'ffff);
+  MinMaxHelper(op, false, s32max, s32min, s32min, s32min);
+  MinMaxHelper(op, false, s32min, s32max, s32min, s32min);
+  MinMaxHelper(op, false, s64max, s32min, 0xffff'ffff, s64max);
+  MinMaxHelper(op, false, s64min, s64max, 0xffff'ffff, s64min);
+}
+
+TEST(cssc_smin) {
+  MinMaxOp op = &MacroAssembler::Smin;
+  uint32_t s32min = 0x8000'0000;
+  uint32_t s32max = 0x7fff'ffff;
+  uint64_t s64min = 0x8000'0000'0000'0000;
+  uint64_t s64max = 0x7fff'ffff'ffff'ffff;
+
+  MinMaxHelper(op, true, 0, 0, 0, 0);
+  MinMaxHelper(op, true, 128, 255, 128, 128);
+  MinMaxHelper(op,
+               true,
+               0,
+               0xffff'ffff'ffff'ffff,
+               0xffff'ffff,
+               0xffff'ffff'ffff'ffff);
+  MinMaxHelper(op, true, s32max, s32min, s32min, s32max);
+  MinMaxHelper(op, true, s32min, s32max, s32min, s32max);
+  MinMaxHelper(op, true, s64max, s32min, s32min, s32min);
+  MinMaxHelper(op, true, s64min, s64max, 0xffff'ffff, s64min);
+}
+
+TEST(cssc_smax) {
+  MinMaxOp op = &MacroAssembler::Smax;
+  uint32_t s32min = 0x8000'0000;
+  uint32_t s32max = 0x7fff'ffff;
+  uint64_t s64min = 0x8000'0000'0000'0000;
+  uint64_t s64max = 0x7fff'ffff'ffff'ffff;
+
+  MinMaxHelper(op, true, 0, 0, 0, 0);
+  MinMaxHelper(op, true, 128, 255, 255, 255);
+  MinMaxHelper(op, true, 0, 0xffff'ffff'ffff'ffff, 0, 0);
+  MinMaxHelper(op, true, s32max, s32min, s32max, s32min);
+  MinMaxHelper(op, true, s32min, s32max, s32max, s32min);
+  MinMaxHelper(op, true, s64max, s32min, 0xffff'ffff, s64max);
+  MinMaxHelper(op, true, s64min, s64max, 0, s64max);
+}
+
 #ifdef VIXL_INCLUDE_SIMULATOR_AARCH64
 // Test the pseudo-instructions that control CPUFeatures dynamically in the
 // Simulator. These are used by the test infrastructure itself, but in a fairly
@@ -14609,6 +14917,27 @@ TEST(sim_stack_base_guard_write) {
 }
 #endif
 #endif
+
+TEST(scalar_movi) {
+  SETUP_WITH_FEATURES(CPUFeatures::kFP, CPUFeatures::kNEON);
+  START();
+
+  // Make sure that V0 is initialized to a non-zero value.
+  __ Movi(v0.V16B(), 0xFF);
+  // This constant value can't be encoded in a MOVI instruction,
+  // so the program would use a fallback path that must set the
+  // upper 64 bits of the destination vector to 0.
+  __ Movi(v0.V1D(), 0xDECAFC0FFEE);
+  __ Mov(x0, v0.V2D(), 1);
+
+  END();
+
+  if (CAN_RUN()) {
+    RUN();
+
+    ASSERT_EQUAL_64(0, x0);
+  }
+}
 
 }  // namespace aarch64
 }  // namespace vixl

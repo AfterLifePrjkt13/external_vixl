@@ -507,8 +507,6 @@ void CPUFeaturesAuditor::VisitFPImmediate(const Instruction* instr) {
 
 void CPUFeaturesAuditor::VisitFPIntegerConvert(const Instruction* instr) {
   RecordInstructionFeaturesScope scope(this);
-  // All of these instructions require FP.
-  scope.Record(CPUFeatures::kFP);
   switch (instr->Mask(FPIntegerConvertMask)) {
     case FCVTAS_wh:
     case FCVTAS_xh:
@@ -538,17 +536,23 @@ void CPUFeaturesAuditor::VisitFPIntegerConvert(const Instruction* instr) {
     case SCVTF_hx:
     case UCVTF_hw:
     case UCVTF_hx:
+      scope.Record(CPUFeatures::kFP);
       scope.Record(CPUFeatures::kFPHalf);
+      return;
+    case FMOV_dx:
+      scope.RecordOneOrBothOf(CPUFeatures::kFP, CPUFeatures::kNEON);
       return;
     case FMOV_d1_x:
     case FMOV_x_d1:
+      scope.Record(CPUFeatures::kFP);
       scope.Record(CPUFeatures::kNEON);
       return;
     case FJCVTZS:
+      scope.Record(CPUFeatures::kFP);
       scope.Record(CPUFeatures::kJSCVT);
       return;
     default:
-      // No special CPU features.
+      scope.Record(CPUFeatures::kFP);
       return;
   }
 }
@@ -1800,6 +1804,28 @@ void CPUFeaturesAuditor::Visit(Metadata* metadata, const Instruction* instr) {
         {"setm_set_memcms"_h, CPUFeatures::kMOPS},
         {"setpn_set_memcms"_h, CPUFeatures::kMOPS},
         {"setp_set_memcms"_h, CPUFeatures::kMOPS},
+        {"abs_32_dp_1src"_h, CPUFeatures::kCSSC},
+        {"abs_64_dp_1src"_h, CPUFeatures::kCSSC},
+        {"cnt_32_dp_1src"_h, CPUFeatures::kCSSC},
+        {"cnt_64_dp_1src"_h, CPUFeatures::kCSSC},
+        {"ctz_32_dp_1src"_h, CPUFeatures::kCSSC},
+        {"ctz_64_dp_1src"_h, CPUFeatures::kCSSC},
+        {"smax_32_dp_2src"_h, CPUFeatures::kCSSC},
+        {"smax_64_dp_2src"_h, CPUFeatures::kCSSC},
+        {"smin_32_dp_2src"_h, CPUFeatures::kCSSC},
+        {"smin_64_dp_2src"_h, CPUFeatures::kCSSC},
+        {"umax_32_dp_2src"_h, CPUFeatures::kCSSC},
+        {"umax_64_dp_2src"_h, CPUFeatures::kCSSC},
+        {"umin_32_dp_2src"_h, CPUFeatures::kCSSC},
+        {"umin_64_dp_2src"_h, CPUFeatures::kCSSC},
+        {"smax_32_minmax_imm"_h, CPUFeatures::kCSSC},
+        {"smax_64_minmax_imm"_h, CPUFeatures::kCSSC},
+        {"smin_32_minmax_imm"_h, CPUFeatures::kCSSC},
+        {"smin_64_minmax_imm"_h, CPUFeatures::kCSSC},
+        {"umax_32u_minmax_imm"_h, CPUFeatures::kCSSC},
+        {"umax_64u_minmax_imm"_h, CPUFeatures::kCSSC},
+        {"umin_32u_minmax_imm"_h, CPUFeatures::kCSSC},
+        {"umin_64u_minmax_imm"_h, CPUFeatures::kCSSC},
     };
 
     if (features.count(form_hash) > 0) {

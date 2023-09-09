@@ -3093,7 +3093,6 @@ class MacroAssembler : public Assembler, public MacroAssemblerInterface {
 #define SVE_3VREG_COMMUTATIVE_MACRO_LIST(V) \
   V(add, Add)                               \
   V(and_, And)                              \
-  V(bic, Bic)                               \
   V(eor, Eor)                               \
   V(mul, Mul)                               \
   V(orr, Orr)                               \
@@ -3609,6 +3608,10 @@ class MacroAssembler : public Assembler, public MacroAssemblerInterface {
     MovprfxHelperScope guard(this, zd, pg, zn);
     asrd(zd, pg, zd, shift);
   }
+  void Bic(const ZRegister& zd,
+           const PRegisterM& pg,
+           const ZRegister& zn,
+           const ZRegister& zm);
   void Bic(const PRegisterWithLaneSize& pd,
            const PRegisterZ& pg,
            const PRegisterWithLaneSize& pn,
@@ -7773,6 +7776,29 @@ class MacroAssembler : public Assembler, public MacroAssemblerInterface {
   }
   MOPS_LIST(DEFINE_MACRO_ASM_FUNC)
 #undef DEFINE_MACRO_ASM_FUNC
+
+  void Abs(const Register& rd, const Register& rn) {
+    VIXL_ASSERT(allow_macro_instructions_);
+    SingleEmissionCheckScope guard(this);
+    abs(rd, rn);
+  }
+
+  void Cnt(const Register& rd, const Register& rn) {
+    VIXL_ASSERT(allow_macro_instructions_);
+    SingleEmissionCheckScope guard(this);
+    cnt(rd, rn);
+  }
+
+  void Ctz(const Register& rd, const Register& rn) {
+    VIXL_ASSERT(allow_macro_instructions_);
+    SingleEmissionCheckScope guard(this);
+    ctz(rd, rn);
+  }
+
+  void Smax(const Register& rd, const Register& rn, const Operand& op);
+  void Smin(const Register& rd, const Register& rn, const Operand& op);
+  void Umax(const Register& rd, const Register& rn, const Operand& op);
+  void Umin(const Register& rd, const Register& rn, const Operand& op);
 
   template <typename T>
   Literal<T>* CreateLiteralDestroyedWithPool(T value) {

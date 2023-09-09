@@ -1061,7 +1061,7 @@ void MacroAssembler::Movi64bitHelper(const VRegister& vd, uint64_t imm) {
     Register temp = temps.AcquireX();
     Mov(temp, imm);
     if (vd.Is1D()) {
-      mov(vd.D(), 0, temp);
+      fmov(vd.D(), temp);
     } else {
       dup(vd.V2D(), temp);
     }
@@ -1097,8 +1097,14 @@ void MacroAssembler::Movi(const VRegister& vd,
 void MacroAssembler::Movi(const VRegister& vd, uint64_t hi, uint64_t lo) {
   // TODO: Move 128-bit values in a more efficient way.
   VIXL_ASSERT(vd.Is128Bits());
-  Movi(vd.V2D(), lo);
-  if (hi != lo) {
+  if (hi == lo) {
+    Movi(vd.V2D(), lo);
+    return;
+  }
+
+  Movi(vd.V1D(), lo);
+
+  if (hi != 0) {
     UseScratchRegisterScope temps(this);
     // TODO: Figure out if using a temporary V register to materialise the
     // immediate is better.
@@ -1411,6 +1417,33 @@ void MacroAssembler::Adds(const Register& rd,
   Add(rd, rn, operand, SetFlags);
 }
 
+#define MINMAX(V)        \
+  V(Smax, smax, IsInt8)  \
+  V(Smin, smin, IsInt8)  \
+  V(Umax, umax, IsUint8) \
+  V(Umin, umin, IsUint8)
+
+#define VIXL_DEFINE_MASM_FUNC(MASM, ASM, RANGE)      \
+  void MacroAssembler::MASM(const Register& rd,      \
+                            const Register& rn,      \
+                            const Operand& op) {     \
+    VIXL_ASSERT(allow_macro_instructions_);          \
+    if (op.IsImmediate()) {                          \
+      int64_t imm = op.GetImmediate();               \
+      if (!RANGE(imm)) {                             \
+        UseScratchRegisterScope temps(this);         \
+        Register temp = temps.AcquireSameSizeAs(rd); \
+        Mov(temp, imm);                              \
+        MASM(rd, rn, temp);                          \
+        return;                                      \
+      }                                              \
+    }                                                \
+    SingleEmissionCheckScope guard(this);            \
+    ASM(rd, rn, op);                                 \
+  }
+MINMAX(VIXL_DEFINE_MASM_FUNC)
+#undef VIXL_DEFINE_MASM_FUNC
+
 void MacroAssembler::St2g(const Register& rt, const MemOperand& addr) {
   VIXL_ASSERT(allow_macro_instructions_);
   SingleEmissionCheckScope guard(this);
@@ -1511,6 +1544,12 @@ void MacroAssembler::Fmov(VRegister vd, double imm) {
   VIXL_ASSERT(allow_macro_instructions_);
   // Floating point immediates are loaded through the literal pool.
   MacroEmissionCheckScope guard(this);
+  uint64_t rawbits = DoubleToRawbits(imm);
+
+  if (rawbits == 0) {
+    fmov(vd.D(), xzr);
+    return;
+  }
 
   if (vd.Is1H() || vd.Is4H() || vd.Is8H()) {
     Fmov(vd, Float16(imm));
@@ -1523,23 +1562,16 @@ void MacroAssembler::Fmov(VRegister vd, double imm) {
   }
 
   VIXL_ASSERT(vd.Is1D() || vd.Is2D());
-  if (IsImmFP64(imm)) {
+  if (IsImmFP64(rawbits)) {
     fmov(vd, imm);
+  } else if (vd.IsScalar()) {
+    ldr(vd,
+        new Literal<double>(imm,
+                            &literal_pool_,
+                            RawLiteral::kDeletedOnPlacementByPool));
   } else {
-    uint64_t rawbits = DoubleToRawbits(imm);
-    if (vd.IsScalar()) {
-      if (rawbits == 0) {
-        fmov(vd, xzr);
-      } else {
-        ldr(vd,
-            new Literal<double>(imm,
-                                &literal_pool_,
-                                RawLiteral::kDeletedOnPlacementByPool));
-      }
-    } else {
-      // TODO: consider NEON support for load literal.
-      Movi(vd, rawbits);
-    }
+    // TODO: consider NEON support for load literal.
+    Movi(vd, rawbits);
   }
 }
 
@@ -1548,6 +1580,12 @@ void MacroAssembler::Fmov(VRegister vd, float imm) {
   VIXL_ASSERT(allow_macro_instructions_);
   // Floating point immediates are loaded through the literal pool.
   MacroEmissionCheckScope guard(this);
+  uint32_t rawbits = FloatToRawbits(imm);
+
+  if (rawbits == 0) {
+    fmov(vd.S(), wzr);
+    return;
+  }
 
   if (vd.Is1H() || vd.Is4H() || vd.Is8H()) {
     Fmov(vd, Float16(imm));
@@ -1560,23 +1598,16 @@ void MacroAssembler::Fmov(VRegister vd, float imm) {
   }
 
   VIXL_ASSERT(vd.Is1S() || vd.Is2S() || vd.Is4S());
-  if (IsImmFP32(imm)) {
+  if (IsImmFP32(rawbits)) {
     fmov(vd, imm);
+  } else if (vd.IsScalar()) {
+    ldr(vd,
+        new Literal<float>(imm,
+                           &literal_pool_,
+                           RawLiteral::kDeletedOnPlacementByPool));
   } else {
-    uint32_t rawbits = FloatToRawbits(imm);
-    if (vd.IsScalar()) {
-      if (rawbits == 0) {
-        fmov(vd, wzr);
-      } else {
-        ldr(vd,
-            new Literal<float>(imm,
-                               &literal_pool_,
-                               RawLiteral::kDeletedOnPlacementByPool));
-      }
-    } else {
-      // TODO: consider NEON support for load literal.
-      Movi(vd, rawbits);
-    }
+    // TODO: consider NEON support for load literal.
+    Movi(vd, rawbits);
   }
 }
 
